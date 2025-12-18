@@ -94,7 +94,7 @@ class KiroTrackerWithIAM:
             # 추가 디버깅: 정확한 prefix로 다시 검색
             exact_response = s3.list_objects_v2(
                 Bucket=bucket_name,
-                Prefix='daily-report/AWSLogs/181136804328/KiroLogs/by_user_analytic/',
+                Prefix=f'daily-report/AWSLogs/{self.account_id}/KiroLogs/by_user_analytic/',
                 MaxKeys=10
             )
             exact_contents = exact_response.get('Contents', [])

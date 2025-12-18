@@ -7,6 +7,8 @@ IAM Identity Center 사용자 매핑 모듈 (실제 연동 버전)
 - bedrock_hheungsu1 사용자
 """
 
+from config import DEFAULT_REGION
+
 import boto3
 import json
 import streamlit as st
@@ -28,9 +30,9 @@ class IAMIdentityCenterMapper:
     def initialize_clients(self):
         """IAM Identity Center 클라이언트 초기화"""
         try:
-            # us-east-1 리전에서 Identity Center 사용
-            self.sso_admin_client = boto3.client('sso-admin', region_name='us-east-1')
-            self.identity_store_client = boto3.client('identitystore', region_name='us-east-1')
+            # DEFAULT_REGION 리전에서 Identity Center 사용
+            self.sso_admin_client = boto3.client('sso-admin', region_name=DEFAULT_REGION)
+            self.identity_store_client = boto3.client('identitystore', region_name=DEFAULT_REGION)
             
             # Identity Store ID 자동 감지
             self.identity_store_id = self.get_identity_store_id()
