@@ -4,7 +4,7 @@ Amazon Kiro User Activity Reports 통합 스크립트 (수정됨)
 """
 
 # 공통 설정 import
-from config import BUCKET_NAME, DEFAULT_REGION
+from config import BUCKET_NAME, DEFAULT_REGION, S3_USER_ACTIVITY_REPORT_PREFIX, SUBSCRIPTION_SERVICE_NAME
 
 import boto3
 import pandas as pd
@@ -149,7 +149,7 @@ def main():
     
     parser.add_argument(
         '--prefix',
-        default=f'daily-report/AWSLogs/{{account_id}}/KiroLogs/by_user_analytic/{DEFAULT_REGION}/',
+        default=f'{S3_USER_ACTIVITY_REPORT_PREFIX}/{{account_id}}/{SUBSCRIPTION_SERVICE_NAME}Logs/by_user_analytic/{DEFAULT_REGION}/',
         help='S3 프리픽스 (account_id는 자동으로 대체됨)'
     )
     
