@@ -6,7 +6,7 @@ IAM Identity Center API를 통해 실제 사용자명과 이메일을 조회하�
 """
 
 # 공통 설정 import
-from config import BUCKET_NAME
+from config import BUCKET_NAME, S3_USER_ACTIVITY_REPORT_PREFIX, SUBSCRIPTION_SERVICE_NAME
 
 import streamlit as st
 import pandas as pd
@@ -61,7 +61,7 @@ class KiroTrackerWithIAM:
     
     def get_region_prefix(self, region: str) -> str:
         """리전별 S3 프리픽스 생성"""
-        return f'daily-report/AWSLogs/{self.account_id}/KiroLogs/by_user_analytic/{region}/'
+        return f'{S3_USER_ACTIVITY_REPORT_PREFIX}/{self.account_id}/{SUBSCRIPTION_SERVICE_NAME}Logs/by_user_analytic/{region}/'
     
     def list_s3_buckets(self) -> list:
         """S3 버킷 목록 조회"""
@@ -80,7 +80,7 @@ class KiroTrackerWithIAM:
             s3 = boto3.client('s3')
             
             # 기본 경로 확인
-            base_prefix = f'daily-report/AWSLogs/{self.account_id}/KiroLogs/by_user_analytic/'
+            base_prefix = f'{S3_USER_ACTIVITY_REPORT_PREFIX}/{self.account_id}/{SUBSCRIPTION_SERVICE_NAME}Logs/by_user_analytic/'
             
             response = s3.list_objects_v2(
                 Bucket=bucket_name,
@@ -94,7 +94,7 @@ class KiroTrackerWithIAM:
             # 추가 디버깅: 정확한 prefix로 다시 검색
             exact_response = s3.list_objects_v2(
                 Bucket=bucket_name,
-                Prefix=f'daily-report/AWSLogs/{self.account_id}/KiroLogs/by_user_analytic/',
+                Prefix=f'{S3_USER_ACTIVITY_REPORT_PREFIX}/{self.account_id}/{SUBSCRIPTION_SERVICE_NAME}Logs/by_user_analytic/',
                 MaxKeys=10
             )
             exact_contents = exact_response.get('Contents', [])
@@ -146,7 +146,7 @@ class KiroTrackerWithIAM:
                 st.write(f"🔄 {SUPPORTED_REGIONS[region]} 데이터 처리 중...")
                 
                 cmd = [
-                    'python', 'consolidate_kiro_reports_fixed.py',
+                    'python3', 'consolidate_kiro_reports_fixed.py',
                     '--bucket', self.bucket_name,
                     '--prefix', self.get_region_prefix(region),
                     '--output', f'data/temp_{region}.csv'
