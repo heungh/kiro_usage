@@ -459,8 +459,12 @@ def main():
         
         sorted_patterns = user_patterns.sort_values(sort_column, ascending=sort_ascending)
         
+        # 인덱스를 1부터 시작하도록 재설정
+        display_df = sorted_patterns[display_columns].copy()
+        display_df.index = range(1, len(display_df) + 1)
+        
         st.dataframe(
-            sorted_patterns[display_columns],
+            display_df,
             use_container_width=True,
             column_config={
                 "DisplayName": "표시명",
@@ -478,20 +482,113 @@ def main():
         )
         
         # 시각화
-        st.subheader("📈 사용자별 시각화")
+        st.subheader("📈 시각화")
         
-        # 사용자별 Chat 메시지 (실제 이름으로)
-        fig1 = px.bar(
-            sorted_patterns.head(10),
-            x='DisplayName',
-            y='TotalChatMessages',
-            title='상위 10명 사용자별 Chat 메시지 수',
-            labels={'TotalChatMessages': 'Chat 메시지 수', 'DisplayName': '사용자명'}
-        )
-        fig1.update_layout(xaxis_tickangle=45)
-        st.plotly_chart(fig1, use_container_width=True)
+        # ========== 1행: 2열 레이아웃 ==========
+        col_left, col_right = st.columns(2)
         
-        # 사용자별 수락률
+        with col_left:
+            # 상위 10명 Chat 메시지
+            fig1 = px.bar(
+                sorted_patterns.head(10),
+                x='DisplayName',
+                y='TotalChatMessages',
+                title='상위 10명 사용자별 Chat 메시지 수',
+                labels={'TotalChatMessages': 'Chat 메시지 수', 'DisplayName': '사용자명'}
+            )
+            fig1.update_layout(xaxis_tickangle=45)
+            st.plotly_chart(fig1, use_container_width=True)
+        
+        with col_right:
+            # 기능별 사용 비율 도넛 차트
+            feature_usage = []
+            
+            chat_count = df['Chat_MessagesSent'].sum()
+            if chat_count > 0:
+                feature_usage.append({'Feature': 'Chat', 'Count': int(chat_count)})
+            
+            inline_count = df['Inline_SuggestionsCount'].sum()
+            if inline_count > 0:
+                feature_usage.append({'Feature': 'Inline 코드 제안', 'Count': int(inline_count)})
+            
+            if 'CodeReview_SucceededEventCount' in df.columns:
+                codereview_count = df['CodeReview_SucceededEventCount'].sum() + df['CodeReview_FailedEventCount'].sum()
+                if codereview_count > 0:
+                    feature_usage.append({'Feature': 'Code Review', 'Count': int(codereview_count)})
+            
+            if 'TestGeneration_EventCount' in df.columns:
+                testgen_count = df['TestGeneration_EventCount'].sum()
+                if testgen_count > 0:
+                    feature_usage.append({'Feature': '테스트 생성', 'Count': int(testgen_count)})
+            
+            if 'DocGeneration_EventCount' in df.columns:
+                docgen_count = df['DocGeneration_EventCount'].sum()
+                if docgen_count > 0:
+                    feature_usage.append({'Feature': '문서 생성', 'Count': int(docgen_count)})
+            
+            if 'Dev_GenerationEventCount' in df.columns:
+                dev_count = df['Dev_GenerationEventCount'].sum()
+                if dev_count > 0:
+                    feature_usage.append({'Feature': 'Dev Agent', 'Count': int(dev_count)})
+            
+            if feature_usage:
+                usage_df = pd.DataFrame(feature_usage)
+                fig_usage = px.pie(
+                    usage_df,
+                    values='Count',
+                    names='Feature',
+                    title='기능별 사용 비율',
+                    hole=0.4
+                )
+                fig_usage.update_traces(textposition='inside', textinfo='percent+label')
+                st.plotly_chart(fig_usage, use_container_width=True)
+        
+        # ========== 2행: 일별 트렌드 (전체 너비) ==========
+        if 'ReportDate' in df.columns:
+            daily_df = df.groupby('ReportDate').agg({
+                'Chat_MessagesSent': 'sum',
+                'Inline_SuggestionsCount': 'sum',
+                'Inline_AcceptanceCount': 'sum',
+                'Chat_AICodeLines': 'sum'
+            }).reset_index()
+            daily_df = daily_df.sort_values('ReportDate')
+            
+            fig_trend = go.Figure()
+            
+            fig_trend.add_trace(go.Scatter(
+                x=daily_df['ReportDate'],
+                y=daily_df['Chat_MessagesSent'],
+                mode='lines+markers',
+                name='Chat 메시지',
+                line=dict(color='#1f77b4')
+            ))
+            
+            fig_trend.add_trace(go.Scatter(
+                x=daily_df['ReportDate'],
+                y=daily_df['Inline_SuggestionsCount'],
+                mode='lines+markers',
+                name='Inline 제안',
+                line=dict(color='#ff7f0e')
+            ))
+            
+            fig_trend.add_trace(go.Scatter(
+                x=daily_df['ReportDate'],
+                y=daily_df['Inline_AcceptanceCount'],
+                mode='lines+markers',
+                name='Inline 수락',
+                line=dict(color='#2ca02c')
+            ))
+            
+            fig_trend.update_layout(
+                title='일별 주요 지표 트렌드',
+                xaxis_title='날짜',
+                yaxis_title='횟수',
+                hovermode='x unified',
+                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+            )
+            st.plotly_chart(fig_trend, use_container_width=True)
+        
+        # ========== 3행: Inline 제안 vs 수락률 (전체 너비) ==========
         fig2 = px.scatter(
             user_patterns,
             x='TotalInlineSuggestions',
@@ -591,7 +688,11 @@ def main():
             if 'RegionName' in user_data.columns:
                 display_columns.insert(1, 'RegionName')
             
-            st.dataframe(user_data[display_columns], use_container_width=True)
+            # 테이블 인덱스를 1부터 시작하도록 설정
+            display_df = user_data[display_columns].copy()
+            display_df.index = range(1, len(display_df) + 1)
+            
+            st.dataframe(display_df, use_container_width=True)
             
             # CSV 다운로드
             user_csv = user_data.to_csv(index=False)
