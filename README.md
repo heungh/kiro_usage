@@ -99,8 +99,15 @@ export AWS_DEFAULT_REGION=us-east-1
 ```
 
 ### 3. Streamlit 앱 실행
+
+**온라인 버전** (AWS 크레덴셜 필요):
 ```bash
 streamlit run kiro_tracker_with_iam.py
+```
+
+**오프라인 버전** (AWS 크레덴셜 불필요):
+```bash
+streamlit run kiro_tracker_offline.py
 ```
 
 ### 4. 대시보드 사용법
@@ -184,9 +191,11 @@ python consolidate_kiro_reports_fixed.py --days 7 --output consolidated_reports.
 
 ```
 kiro_usage/
-├── kiro_tracker_with_iam.py          # 메인 Streamlit 앱
+├── kiro_tracker_with_iam.py          # 메인 Streamlit 앱 (온라인 버전)
+├── kiro_tracker_offline.py           # 오프라인 Streamlit 앱 (파일 업로드 버전)
 ├── consolidate_kiro_reports_fixed.py # S3 데이터 통합 스크립트
 ├── config.py                         # 공통 설정 파일
+├── iam_identity_center_mapper.py     # IAM Identity Center 연동 모듈
 ├── data/                            # 로컬 데이터 저장소
 │   ├── consolidated_reports.csv     # 통합된 리포트 데이터
 │   └── user_mappings.json          # IAM Identity Center 사용자 매핑
@@ -196,29 +205,52 @@ kiro_usage/
 
 ## 주요 기능
 
-### 1. IAM Identity Center 연동
+### 1. 온라인 버전 vs 오프라인 버전
+
+| 기능 | 온라인 (`kiro_tracker_with_iam.py`) | 오프라인 (`kiro_tracker_offline.py`) |
+|------|-------------------------------------|--------------------------------------|
+| AWS 크레덴셜 | 필요 | 불필요 |
+| S3 직접 접근 | ✅ | ❌ |
+| IAM Identity Center 연동 | ✅ 자동 | ✅ 선택적 |
+| 데이터 입력 방식 | S3에서 자동 수집 | CSV 파일 업로드 |
+| 사용 시나리오 | AWS 환경에서 실시간 분석 | 로컬 환경에서 오프라인 분석 |
+
+**오프라인 버전 사용 시나리오:**
+- AWS 크레덴셜 없이 분석이 필요한 경우
+- 다른 팀에서 받은 CSV 파일을 분석할 때
+- 로컬 환경에서 빠르게 데이터를 확인할 때
+
+### 2. IAM Identity Center 연동
 - 실제 사용자명과 이메일 주소 표시
 - 사용자 ID를 실명으로 매핑
 - 자동 사용자 정보 캐싱
 
-### 2. 데이터 분석 및 시각화
+### 3. 데이터 분석 및 시각화
 - **사용자별 활동 분석**: 개별 사용자의 Kiro 사용 패턴
 - **시간대별 사용량**: 일별, 주별, 월별 사용 트렌드
 - **기능별 사용 통계**: 코드 생성, 질문 답변 등 기능별 분석
 - **대화형 차트**: Plotly를 활용한 인터랙티브 시각화
+- **기능별 사용 비율**: 도넛 차트로 Chat, Inline 등 기능 비율 표시
+- **일별 트렌드**: Chat 메시지, Inline 제안/수락 수 추이
 
-### 3. S3 데이터 관리
+### 4. S3 데이터 관리
 - 자동 S3 버킷 구조 검증
 - 리전별 데이터 수집
 - 분산된 CSV 파일 통합
 - 실시간 데이터 동기화
 
-### 4. 리포팅 기능
+### 5. 리포팅 기능
 - CSV 형태로 데이터 내보내기
 - 사용자 정의 기간 설정
 - 필터링 및 검색 기능
 
 ## 소스코드 주요 구성
+
+### `kiro_tracker_offline.py`
+- **OfflineKiroTracker 클래스**: 파일 업로드 기반 데이터 처리
+- **CSV 파일 업로드**: 여러 파일 동시 업로드 및 자동 통합
+- **선택적 IAM 연동**: AWS 크레덴셜 없이도 기본 분석 가능
+- **동일한 시각화**: 온라인 버전과 동일한 차트 및 분석 기능
 
 ### `kiro_tracker_with_iam.py`
 - **KiroTrackerWithIAM 클래스**: 메인 데이터 처리 로직
@@ -244,7 +276,7 @@ your-bucket/
 └── daily-report/
     └── AWSLogs/
         └── {account-id}/
-            └── KiroLogs/
+            └── QDeveloperLogs/
                 └── by_user_analytic/
                     └── {region}/
                         └── {year}/
