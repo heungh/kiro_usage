@@ -324,31 +324,34 @@ def main():
     st.sidebar.code(f"버킷: {tracker.bucket_name}")
     st.sidebar.code(f"계정: {tracker.account_id}")
     
+    # ========== S3 데이터 수집 섹션 ==========
+    st.sidebar.subheader("📥 S3 데이터 수집")
+    
     # 리전 선택
-    st.sidebar.subheader("🌍 리전 선택")
     selected_regions = st.sidebar.multiselect(
-        "분석할 리전 선택",
+        "수집할 리전 선택",
         options=list(SUPPORTED_REGIONS.keys()),
         default=['us-east-1'],
         format_func=lambda x: f"{x} ({SUPPORTED_REGIONS[x]})"
     )
     
-    # 날짜 범위
-    st.sidebar.subheader("📅 날짜 범위")
-    date_option = st.sidebar.radio("날짜 범위", ["전체 기간", "최근 N일"])
-    days_filter = None
-    if date_option == "최근 N일":
-        days_filter = st.sidebar.slider("일수 선택", 1, 90, 30)
+    # S3 수집 기간 설정
+    collect_date_option = st.sidebar.radio("수집 기간", ["전체 기간", "최근 N일"], key="collect_date")
+    collect_days = None
+    if collect_date_option == "최근 N일":
+        collect_days = st.sidebar.slider("수집할 일수", 1, 90, 30, key="collect_days")
     
-    # 데이터 통합
+    # 데이터 통합 버튼
     if st.sidebar.button("🔄 리전 데이터 통합"):
         if selected_regions:
             with st.spinner("멀티 리전 데이터 통합 중..."):
-                success = tracker.consolidate_region_data(selected_regions, days_filter)
+                success = tracker.consolidate_region_data(selected_regions, collect_days)
                 if success:
                     st.rerun()
     
-    # CSV 파일 선택 (캐시 방지를 위해 매번 새로 조회)
+    st.sidebar.markdown("---")
+    
+    # ========== 데이터 분석 섹션 ==========
     st.sidebar.subheader("📂 데이터 파일")
     
     # 파일 목록을 매번 새로 조회하고 최신순으로 정렬
@@ -368,6 +371,13 @@ def main():
     selected_index = st.sidebar.selectbox("CSV 파일 선택 (최신순)", range(len(csv_options)), format_func=lambda x: csv_options[x])
     selected_csv = csv_names[selected_index]
     selected_file_path = tracker.data_dir / selected_csv
+    
+    # 조회 기간 (로드된 데이터 내에서 필터링)
+    st.sidebar.subheader("📅 조회 기간")
+    display_date_option = st.sidebar.radio("조회 기간", ["전체 기간", "최근 N일"], key="display_date")
+    display_days = None
+    if display_date_option == "최근 N일":
+        display_days = st.sidebar.slider("조회할 일수", 1, 90, 30, key="display_days")
     
     # 분석 모드 선택
     st.sidebar.subheader("📊 분석 모드")
@@ -397,6 +407,12 @@ def main():
     # 선택된 리전만 필터링
     if 'Region' in df.columns and selected_regions:
         df = df[df['Region'].isin(selected_regions)]
+    
+    # 날짜 필터링 적용 (로드된 데이터에서 조회 기간 적용)
+    if display_days and 'ReportDate' in df.columns:
+        cutoff_date = datetime.now() - timedelta(days=display_days)
+        df = df[df['ReportDate'] >= cutoff_date]
+        st.sidebar.info(f"📅 {cutoff_date.strftime('%Y-%m-%d')} 이후 데이터만 조회")
     
     if df.empty:
         st.warning("⚠️ 선택된 조건에 맞는 데이터가 없습니다.")

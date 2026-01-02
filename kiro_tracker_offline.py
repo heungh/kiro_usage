@@ -57,8 +57,17 @@ class OfflineKiroTracker:
                 # 파일명에서 날짜 추출 시도
                 filename = uploaded_file.name
                 if 'ReportDate' not in df.columns:
-                    # 파일명에서 날짜 추출 또는 현재 날짜 사용
-                    df['ReportDate'] = datetime.now().strftime('%Y-%m-%d')
+                    # 파일명에서 날짜 추출 (예: 737168310512_by_user_analytic_202511240000_report.csv)
+                    try:
+                        date_str = filename.split('_')[-2][:8]  # 202511240000 -> 20251124
+                        report_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+                        df['ReportDate'] = report_date
+                    except (IndexError, ValueError):
+                        # 파일명에서 추출 실패 시 Date 컬럼 사용 또는 현재 날짜
+                        if 'Date' in df.columns:
+                            df['ReportDate'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
+                        else:
+                            df['ReportDate'] = datetime.now().strftime('%Y-%m-%d')
                 
                 # 파일 소스 정보 추가
                 df['SourceFile'] = filename
@@ -206,6 +215,13 @@ def main():
         ["사용자 분석", "개별 사용자 상세"]
     )
     
+    # 조회 기간 필터
+    st.sidebar.subheader("📅 조회 기간")
+    display_date_option = st.sidebar.radio("조회 기간", ["전체 기간", "최근 N일"], key="display_date")
+    display_days = None
+    if display_date_option == "최근 N일":
+        display_days = st.sidebar.slider("조회할 일수", 1, 90, 30, key="display_days")
+    
     if use_iam:
         try:
             mapper_stats = tracker.user_mapper.get_cache_stats()
@@ -247,6 +263,19 @@ def main():
     
     # 데이터에 사용자 정보 추가
     df = tracker.load_data_with_user_info(df, use_iam)
+    
+    # 조회 기간 필터링 적용
+    date_column = 'ReportDate' if 'ReportDate' in df.columns else 'Date'
+    if display_days and date_column in df.columns:
+        from datetime import timedelta
+        df[date_column] = pd.to_datetime(df[date_column])
+        cutoff_date = datetime.now() - timedelta(days=display_days)
+        df = df[df[date_column] >= cutoff_date]
+        st.sidebar.info(f"📅 {cutoff_date.strftime('%Y-%m-%d')} 이후 데이터만 조회")
+    
+    if df.empty:
+        st.warning("⚠️ 선택된 조건에 맞는 데이터가 없습니다.")
+        return
     
     # 기본 정보 표시
     st.header("📋 데이터 개요")
