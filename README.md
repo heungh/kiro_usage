@@ -276,7 +276,7 @@ your-bucket/
 └── daily-report/
     └── AWSLogs/
         └── {account-id}/
-            └── QDeveloperLogs/
+            └── KiroLogs|QDeveloperLogs/
                 └── by_user_analytic/
                     └── {region}/
                         └── {year}/
