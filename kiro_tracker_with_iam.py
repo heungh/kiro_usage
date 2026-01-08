@@ -374,10 +374,59 @@ def main():
     
     # 조회 기간 (로드된 데이터 내에서 필터링)
     st.sidebar.subheader("📅 조회 기간")
-    display_date_option = st.sidebar.radio("조회 기간", ["전체 기간", "최근 N일"], key="display_date")
-    display_days = None
-    if display_date_option == "최근 N일":
-        display_days = st.sidebar.slider("조회할 일수", 1, 90, 30, key="display_days")
+    
+    # 세션 상태 초기화 (기본값: 전체 기간)
+    if 'date_start' not in st.session_state:
+        st.session_state.date_start = None
+    if 'date_end' not in st.session_state:
+        st.session_state.date_end = None
+    if 'quick_select' not in st.session_state:
+        st.session_state.quick_select = "전체"
+    
+    # 퀵 선택 (radio 가로 배치)
+    selected_quick = st.sidebar.radio(
+        "기간",
+        ["7일", "30일", "90일", "전체"],
+        index=["7일", "30일", "90일", "전체"].index(st.session_state.quick_select),
+        horizontal=True,
+        label_visibility="collapsed",
+        key="quick_radio"
+    )
+    
+    # 선택 변경 시 날짜 업데이트
+    if selected_quick != st.session_state.quick_select:
+        st.session_state.quick_select = selected_quick
+        if selected_quick == "7일":
+            st.session_state.date_end = datetime.now().date()
+            st.session_state.date_start = st.session_state.date_end - timedelta(days=7)
+        elif selected_quick == "30일":
+            st.session_state.date_end = datetime.now().date()
+            st.session_state.date_start = st.session_state.date_end - timedelta(days=30)
+        elif selected_quick == "90일":
+            st.session_state.date_end = datetime.now().date()
+            st.session_state.date_start = st.session_state.date_end - timedelta(days=90)
+        elif selected_quick == "전체":
+            st.session_state.date_start = None
+            st.session_state.date_end = None
+        st.rerun()
+    
+    # 날짜 선택기 (커스텀 범위) - on_change로 즉시 반영
+    def on_date_change():
+        st.session_state.date_start = st.session_state.date_input_start
+        st.session_state.date_end = st.session_state.date_input_end
+    
+    st.sidebar.date_input(
+        "시작일",
+        value=st.session_state.date_start,
+        key="date_input_start",
+        on_change=on_date_change
+    )
+    st.sidebar.date_input(
+        "종료일",
+        value=st.session_state.date_end,
+        key="date_input_end",
+        on_change=on_date_change
+    )
     
     # 분석 모드 선택
     st.sidebar.subheader("📊 분석 모드")
@@ -409,10 +458,21 @@ def main():
         df = df[df['Region'].isin(selected_regions)]
     
     # 날짜 필터링 적용 (로드된 데이터에서 조회 기간 적용)
-    if display_days and 'ReportDate' in df.columns:
-        cutoff_date = datetime.now() - timedelta(days=display_days)
-        df = df[df['ReportDate'] >= cutoff_date]
-        st.sidebar.info(f"📅 {cutoff_date.strftime('%Y-%m-%d')} 이후 데이터만 조회")
+    if 'ReportDate' in df.columns:
+        # 시작일 필터
+        if st.session_state.date_start:
+            start_datetime = datetime.combine(st.session_state.date_start, datetime.min.time())
+            df = df[df['ReportDate'] >= start_datetime]
+        # 종료일 필터
+        if st.session_state.date_end:
+            end_datetime = datetime.combine(st.session_state.date_end, datetime.max.time())
+            df = df[df['ReportDate'] <= end_datetime]
+        
+        # 필터 적용 상태 표시
+        if st.session_state.date_start or st.session_state.date_end:
+            start_str = st.session_state.date_start.strftime('%Y-%m-%d') if st.session_state.date_start else '처음'
+            end_str = st.session_state.date_end.strftime('%Y-%m-%d') if st.session_state.date_end else '현재'
+            st.sidebar.info(f"📅 {start_str} ~ {end_str}")
     
     if df.empty:
         st.warning("⚠️ 선택된 조건에 맞는 데이터가 없습니다.")
