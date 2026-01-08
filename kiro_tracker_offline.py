@@ -9,7 +9,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import io
 from typing import List, Dict
@@ -217,10 +217,59 @@ def main():
     
     # 조회 기간 필터
     st.sidebar.subheader("📅 조회 기간")
-    display_date_option = st.sidebar.radio("조회 기간", ["전체 기간", "최근 N일"], key="display_date")
-    display_days = None
-    if display_date_option == "최근 N일":
-        display_days = st.sidebar.slider("조회할 일수", 1, 90, 30, key="display_days")
+    
+    # 세션 상태 초기화 (기본값: 전체 기간)
+    if 'offline_date_start' not in st.session_state:
+        st.session_state.offline_date_start = None
+    if 'offline_date_end' not in st.session_state:
+        st.session_state.offline_date_end = None
+    if 'offline_quick_select' not in st.session_state:
+        st.session_state.offline_quick_select = "전체"
+    
+    # 퀵 선택 (radio 가로 배치)
+    selected_quick = st.sidebar.radio(
+        "기간",
+        ["7일", "30일", "90일", "전체"],
+        index=["7일", "30일", "90일", "전체"].index(st.session_state.offline_quick_select),
+        horizontal=True,
+        label_visibility="collapsed",
+        key="offline_quick_radio"
+    )
+    
+    # 선택 변경 시 날짜 업데이트
+    if selected_quick != st.session_state.offline_quick_select:
+        st.session_state.offline_quick_select = selected_quick
+        if selected_quick == "7일":
+            st.session_state.offline_date_end = datetime.now().date()
+            st.session_state.offline_date_start = st.session_state.offline_date_end - timedelta(days=7)
+        elif selected_quick == "30일":
+            st.session_state.offline_date_end = datetime.now().date()
+            st.session_state.offline_date_start = st.session_state.offline_date_end - timedelta(days=30)
+        elif selected_quick == "90일":
+            st.session_state.offline_date_end = datetime.now().date()
+            st.session_state.offline_date_start = st.session_state.offline_date_end - timedelta(days=90)
+        elif selected_quick == "전체":
+            st.session_state.offline_date_start = None
+            st.session_state.offline_date_end = None
+        st.rerun()
+    
+    # 날짜 선택기 (커스텀 범위) - on_change로 즉시 반영
+    def on_offline_date_change():
+        st.session_state.offline_date_start = st.session_state.offline_date_input_start
+        st.session_state.offline_date_end = st.session_state.offline_date_input_end
+    
+    st.sidebar.date_input(
+        "시작일",
+        value=st.session_state.offline_date_start,
+        key="offline_date_input_start",
+        on_change=on_offline_date_change
+    )
+    st.sidebar.date_input(
+        "종료일",
+        value=st.session_state.offline_date_end,
+        key="offline_date_input_end",
+        on_change=on_offline_date_change
+    )
     
     if use_iam:
         try:
@@ -242,36 +291,58 @@ def main():
         help="여러 파일을 동시에 선택할 수 있습니다. 파일들은 자동으로 통합됩니다."
     )
     
-    if not uploaded_files:
-        st.info("""
-        💡 **사용 방법:**
-        1. S3에서 다운로드한 Kiro 사용 현황 CSV 파일들을 업로드하세요
-        2. 여러 파일을 동시에 선택 가능합니다
-        3. 파일들은 자동으로 통합되어 분석됩니다
+    # 업로드된 파일 처리 및 세션에 저장
+    if uploaded_files:
+        # 파일 처리
+        with st.spinner("업로드된 파일들을 처리하는 중..."):
+            df = tracker.process_uploaded_files(uploaded_files)
         
-        **필수 컬럼:** UserId, Date, Chat_MessagesSent, Chat_AICodeLines, Inline_SuggestionsCount, Inline_AcceptanceCount
-        """)
+        if not df.empty:
+            # 데이터에 사용자 정보 추가
+            df = tracker.load_data_with_user_info(df, use_iam)
+            # 세션에 저장
+            st.session_state.offline_df = df
+            st.session_state.offline_use_iam = use_iam
+    
+    # 세션에 데이터가 없으면 안내 메시지
+    if 'offline_df' not in st.session_state:
+        if not uploaded_files:
+            st.info("""
+            💡 **사용 방법:**
+            1. S3에서 다운로드한 Kiro 사용 현황 CSV 파일들을 업로드하세요
+            2. 여러 파일을 동시에 선택 가능합니다
+            3. 파일들은 자동으로 통합되어 분석됩니다
+            
+            **필수 컬럼:** UserId, Date, Chat_MessagesSent, Chat_AICodeLines, Inline_SuggestionsCount, Inline_AcceptanceCount
+            """)
         return
     
-    # 파일 처리
-    with st.spinner("업로드된 파일들을 처리하는 중..."):
-        df = tracker.process_uploaded_files(uploaded_files)
-    
-    if df.empty:
+    if st.session_state.offline_df.empty:
         st.error("❌ 처리 가능한 데이터가 없습니다.")
         return
     
-    # 데이터에 사용자 정보 추가
-    df = tracker.load_data_with_user_info(df, use_iam)
+    # 세션에서 데이터 로드
+    df = st.session_state.offline_df.copy()
     
     # 조회 기간 필터링 적용
     date_column = 'ReportDate' if 'ReportDate' in df.columns else 'Date'
-    if display_days and date_column in df.columns:
-        from datetime import timedelta
+    if date_column in df.columns:
         df[date_column] = pd.to_datetime(df[date_column])
-        cutoff_date = datetime.now() - timedelta(days=display_days)
-        df = df[df[date_column] >= cutoff_date]
-        st.sidebar.info(f"📅 {cutoff_date.strftime('%Y-%m-%d')} 이후 데이터만 조회")
+        
+        # 시작일 필터
+        if st.session_state.offline_date_start:
+            start_datetime = datetime.combine(st.session_state.offline_date_start, datetime.min.time())
+            df = df[df[date_column] >= start_datetime]
+        # 종료일 필터
+        if st.session_state.offline_date_end:
+            end_datetime = datetime.combine(st.session_state.offline_date_end, datetime.max.time())
+            df = df[df[date_column] <= end_datetime]
+        
+        # 필터 적용 상태 표시
+        if st.session_state.offline_date_start or st.session_state.offline_date_end:
+            start_str = st.session_state.offline_date_start.strftime('%Y-%m-%d') if st.session_state.offline_date_start else '처음'
+            end_str = st.session_state.offline_date_end.strftime('%Y-%m-%d') if st.session_state.offline_date_end else '현재'
+            st.sidebar.info(f"📅 {start_str} ~ {end_str}")
     
     if df.empty:
         st.warning("⚠️ 선택된 조건에 맞는 데이터가 없습니다.")
@@ -286,7 +357,7 @@ def main():
     with col2:
         st.metric("사용자 수", df['UserId'].nunique())
     with col3:
-        file_count = df['SourceFile'].nunique() if 'SourceFile' in df.columns else len(uploaded_files)
+        file_count = df['SourceFile'].nunique() if 'SourceFile' in df.columns else 1
         st.metric("업로드 파일 수", file_count)
     with col4:
         if use_iam:
